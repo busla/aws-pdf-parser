@@ -14,8 +14,11 @@ requires-python = ">=3.13"
 dependencies = [
     "langchain>=0.3.25",
     "langchain-community>=0.3.24",
+    "langchain-unstructured>=0.1.5",
     "pypdf>=5.6.0",
     "requests>=2.32.3",
+    "ruff>=0.11.13",
+    "unstructured[pdf]>=0.10.0",
 ]
 
 [project.scripts]
@@ -23,9 +26,20 @@ parse-pdf = "aws_pdf_parser.main:main"
 
 [tool.uv]
 dev-dependencies = [
-    "black>=25.1.0",
-    "flake8>=7.2.0",
+    "ruff>=0.1.0",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aws_pdf_parser"]

@@ -5,13 +5,14 @@ LLM-readable text files.
 """
 
 import argparse
-import sys
-from pathlib import Path
-from urllib.parse import urlparse
-import requests
-import tempfile
 import os
-from typing import List, Dict, Any
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List
+from urllib.parse import urlparse
+
+import requests
 
 
 def download_pdf(url: str, output_path: Path) -> None:
@@ -30,6 +31,66 @@ def download_pdf(url: str, output_path: Path) -> None:
         sys.exit(1)
 
 
+def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
+    """Parse PDF using UnstructuredLoader for better layout analysis."""
+    try:
+        from langchain_unstructured import UnstructuredLoader
+
+        loader = UnstructuredLoader(str(pdf_path), strategy="hi_res")
+        documents = loader.load()
+
+        chapters = []
+        current_chapter = {"title": "Introduction", "content": "", "page_start": 1}
+
+        for i, doc in enumerate(documents):
+            content = doc.page_content
+
+            lines = content.split("\n")
+            for line in lines:
+                line = line.strip()
+
+                if (
+                    line.startswith(("POST ", "GET ", "PUT ", "DELETE "))
+                    and "/" in line
+                    or line.endswith(" API")
+                    or line.endswith(" Reference")
+                    or (line.startswith("Data Types") and len(line.split()) <= 3)
+                    or (line.startswith("Actions") and len(line.split()) <= 2)
+                    or (line.startswith("Errors") and len(line.split()) <= 2)
+                    or line.startswith("Amazon Bedrock")
+                    or line.startswith("Agents for Amazon Bedrock")
+                ):
+                    if current_chapter["content"].strip():
+                        chapters.append(current_chapter.copy())
+
+                    current_chapter = {
+                        "title": line.replace("#", "").strip(),
+                        "content": "",
+                        "page_start": i + 1,
+                    }
+                    break
+
+            current_chapter["content"] += f"\n{content}\n"
+
+        if current_chapter["content"].strip():
+            chapters.append(current_chapter)
+
+        if not chapters:
+            all_content = "\n".join([doc.page_content for doc in documents])
+            chapters = [
+                {"title": "Complete Document", "content": all_content, "page_start": 1}
+            ]
+
+        return chapters
+
+    except ImportError:
+        print("Unstructured dependencies not found. Please install them first.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error parsing PDF with UnstructuredLoader: {e}")
+        sys.exit(1)
+
+
 def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
     """Parse PDF using LangChain to extract structured content."""
     try:
@@ -39,11 +100,7 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         documents = loader.load()
 
         chapters = []
-        current_chapter = {
-            "title": "Introduction",
-            "content": "",
-            "page_start": 1
-        }
+        current_chapter = {"title": "Introduction", "content": "", "page_start": 1}
 
         for i, doc in enumerate(documents):
             content = doc.page_content
@@ -54,14 +111,19 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
             for line in lines:
                 line = line.strip()
                 if (
-                    line.startswith("Chapter ")
+                    line.startswith(("POST ", "GET ", "PUT ", "DELETE "))
+                    and "/" in line
+                    or line.endswith(" API")
+                    or line.endswith(" Reference")
+                    or (line.startswith("Data Types") and len(line.split()) <= 3)
+                    or (line.startswith("Actions") and len(line.split()) <= 2)
+                    or (line.startswith("Errors") and len(line.split()) <= 2)
+                    or line.startswith("Amazon Bedrock")
+                    or line.startswith("Agents for Amazon Bedrock")
+                    or line.startswith("Chapter ")
                     or line.startswith("CHAPTER ")
-                    or (len(line.split()) <= 5 and line.isupper() and
-                        len(line) > 10)
                     or line.startswith("# ")
-                    or (line.endswith("Overview") and len(line.split()) <= 3)
                 ):
-
                     if current_chapter["content"].strip():
                         chapters.append(current_chapter.copy())
 
@@ -73,20 +135,16 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
 
                     break
 
-            current_chapter["content"] += (
-                f"\n--- Page {page_num} ---\n{content}\n"
-            )
+            current_chapter["content"] += f"\n--- Page {page_num} ---\n{content}\n"
 
         if current_chapter["content"].strip():
             chapters.append(current_chapter)
 
         if not chapters:
             all_content = "\n".join([doc.page_content for doc in documents])
-            chapters = [{
-                "title": "Complete Document",
-                "content": all_content,
-                "page_start": 1
-            }]
+            chapters = [
+                {"title": "Complete Document", "content": all_content, "page_start": 1}
+            ]
 
         return chapters
 
@@ -98,8 +156,7 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         sys.exit(1)
 
 
-def save_chapters_to_files(chapters: List[Dict[str, Any]],
-                           output_dir: Path) -> None:
+def save_chapters_to_files(chapters: List[Dict[str, Any]], output_dir: Path) -> None:
     """Save each chapter to a separate text file."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +167,7 @@ def save_chapters_to_files(chapters: List[Dict[str, Any]],
         ).rstrip()
         safe_title = safe_title.replace(" ", "_")
 
-        filename = f"{i+1:02d}_{safe_title}.txt"
+        filename = f"{i + 1:02d}_{safe_title}.txt"
         filepath = output_dir / filename
 
         with open(filepath, "w", encoding="utf-8") as f:
@@ -135,6 +192,12 @@ def main():
         default=Path("./parsed_chapters"),
         help="Output directory for chapter files (default: ./parsed_chapters)",
     )
+    parser.add_argument(
+        "--strategy",
+        choices=["simple", "advanced"],
+        default="simple",
+        help="Parsing strategy: 'simple' uses PyPDF, 'advanced' uses Unstructured",
+    )
 
     args = parser.parse_args()
 
@@ -150,16 +213,18 @@ def main():
         print(f"Downloading PDF from: {args.pdf_url}")
         download_pdf(args.pdf_url, tmp_path)
 
-        print("Parsing PDF structure...")
-        chapters = parse_pdf_with_langchain(tmp_path)
+        print(f"Parsing PDF structure using {args.strategy} strategy...")
+        if args.strategy == "advanced":
+            chapters = parse_pdf_with_unstructured(tmp_path)
+        else:
+            chapters = parse_pdf_with_langchain(tmp_path)
 
         print(f"Found {len(chapters)} chapters")
 
         print(f"Saving chapters to: {args.output}")
         save_chapters_to_files(chapters, args.output)
 
-        print(f"\nCompleted! {len(chapters)} chapter files created in "
-              f"{args.output}")
+        print(f"\nCompleted! {len(chapters)} chapter files created in {args.output}")
 
     finally:
         if tmp_path.exists():
