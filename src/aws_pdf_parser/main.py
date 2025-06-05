@@ -233,8 +233,63 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         sys.exit(1)
 
 
+def format_content_as_markdown(content: str) -> str:
+    """Convert plain text content to markdown with preserved formatting."""
+    lines = content.split('\n')
+    formatted_lines = []
+    in_code_block = False
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        
+        if not stripped:
+            formatted_lines.append('')
+            continue
+            
+        if (stripped.startswith(('{', 'POST /', 'GET /', 'PUT /', 'DELETE /', 'HTTP/')) or
+            stripped.endswith(('{', '}')) or
+            'Content-type:' in stripped or
+            stripped.startswith(('curl ', 'aws ', 'python '))):
+            if not in_code_block:
+                formatted_lines.append('```')
+                in_code_block = True
+            formatted_lines.append(line)
+            continue
+        elif in_code_block and not stripped.startswith((' ', '\t')):
+            formatted_lines.append('```')
+            in_code_block = False
+        
+        if (len(stripped) > 3 and 
+            (stripped.isupper() or 
+             stripped.endswith((' Reference', ' API', ' Overview')) or
+             (stripped[0].isupper() and len(stripped.split()) <= 4 and 
+              not stripped.endswith('.')))):
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            if (not stripped.startswith(('HTTP', 'AWS', 'AMAZON')) and
+                len(stripped) < 60 and
+                not next_line.startswith(stripped[:10])):
+                formatted_lines.append(f"## {stripped}")
+                continue
+        
+        if (stripped.startswith(('• ', '- ', '* ')) or
+            (len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in ('.', ')'))):
+            formatted_lines.append(f"- {stripped.lstrip('•-* ').lstrip('0123456789. ')}")
+            continue
+            
+        if line.startswith(('  • ', '  - ', '    • ', '    - ')):
+            formatted_lines.append(f"  - {stripped.lstrip('•-* ')}")
+            continue
+        
+        formatted_lines.append(stripped)
+    
+    if in_code_block:
+        formatted_lines.append('```')
+    
+    return '\n'.join(formatted_lines)
+
+
 def save_chapters_to_files(chapters: List[Dict[str, Any]], output_dir: Path) -> None:
-    """Save each chapter to a separate text file."""
+    """Save each chapter to a separate markdown file with preserved formatting."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for i, chapter in enumerate(chapters):
@@ -244,14 +299,16 @@ def save_chapters_to_files(chapters: List[Dict[str, Any]], output_dir: Path) -> 
         ).rstrip()
         safe_title = safe_title.replace(" ", "_")
 
-        filename = f"{i + 1:02d}_{safe_title}.txt"
+        filename = f"{i + 1:02d}_{safe_title}.md"
         filepath = output_dir / filename
+
+        formatted_content = format_content_as_markdown(chapter["content"])
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(f"# {chapter['title']}\n\n")
-            f.write(f"Starting from page: {chapter['page_start']}\n\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(chapter["content"])
+            f.write(f"**Starting from page:** {chapter['page_start']}\n\n")
+            f.write("---\n\n")
+            f.write(formatted_content)
 
         print(f"Saved chapter: {filepath}")
 
@@ -267,7 +324,7 @@ def main():
         "--output",
         type=Path,
         default=Path("./parsed_chapters"),
-        help="Output directory for chapter files (default: ./parsed_chapters)",
+        help="Output directory for markdown chapter files (default: ./parsed_chapters)",
     )
     parser.add_argument(
         "--strategy",
