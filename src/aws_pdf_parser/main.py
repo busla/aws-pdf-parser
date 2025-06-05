@@ -40,7 +40,7 @@ def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
         documents = loader.load()
 
         chapters = []
-        
+
         all_content = ""
         for doc in documents:
             all_content += doc.page_content + "\n"
@@ -48,69 +48,79 @@ def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
         sections = []
         current_section = ""
         current_title = "Introduction"
-        
+
         lines = all_content.split("\n")
         for i, line in enumerate(lines):
             line_stripped = line.strip()
-            
+
             is_new_section = False
             new_title = None
-            
-            if (line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /")) and 
-                ("HTTP/1.1" in line_stripped or "/" in line_stripped)):
+
+            if line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /")) and (
+                "HTTP/1.1" in line_stripped or "/" in line_stripped
+            ):
                 is_new_section = True
-                new_title = f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
-            
-            elif (len(line_stripped) > 0 and 
-                  line_stripped[0].isupper() and 
-                  any(c.isupper() for c in line_stripped[1:]) and
-                  not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock")) and
-                  len(line_stripped.split()) == 1 and
-                  len(line_stripped) > 5 and
-                  not line_stripped.endswith((".", ":", ";"))):
+                new_title = (
+                    f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
+                )
+
+            elif (
+                len(line_stripped) > 0
+                and line_stripped[0].isupper()
+                and any(c.isupper() for c in line_stripped[1:])
+                and not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock"))
+                and len(line_stripped.split()) == 1
+                and len(line_stripped) > 5
+                and not line_stripped.endswith((".", ":", ";"))
+            ):
                 is_new_section = True
                 new_title = line_stripped
-            
-            elif (line_stripped.endswith((" Reference", " API")) and 
-                  not line_stripped.startswith("Amazon Bedrock API Reference")):
+
+            elif line_stripped.endswith(
+                (" Reference", " API")
+            ) and not line_stripped.startswith("Amazon Bedrock API Reference"):
                 is_new_section = True
                 new_title = line_stripped
-            
+
             elif line_stripped in ["Data Types", "Actions", "Errors", "Examples"]:
                 is_new_section = True
                 new_title = line_stripped
-            
+
             if is_new_section and current_section.strip():
-                sections.append({
-                    "title": current_title,
-                    "content": current_section.strip()
-                })
+                sections.append(
+                    {"title": current_title, "content": current_section.strip()}
+                )
                 current_section = ""
                 current_title = new_title or line_stripped
-            
+
             current_section += line + "\n"
-        
+
         if current_section.strip():
-            sections.append({
-                "title": current_title,
-                "content": current_section.strip()
-            })
-        
+            sections.append(
+                {"title": current_title, "content": current_section.strip()}
+            )
+
         page_counter = 1
         for i, section in enumerate(sections):
             content_lines = len(section["content"].split("\n"))
-            
-            if content_lines < 15 and i < len(sections) - 1:
-                sections[i + 1]["content"] = section["content"] + "\n\n" + sections[i + 1]["content"]
-                sections[i + 1]["title"] = f"{section['title']} - {sections[i + 1]['title']}"
+
+            if content_lines < 50 and i < len(sections) - 1:
+                sections[i + 1]["content"] = (
+                    section["content"] + "\n\n" + sections[i + 1]["content"]
+                )
+                sections[i + 1]["title"] = (
+                    f"{section['title']} - {sections[i + 1]['title']}"
+                )
                 continue
-            
-            chapters.append({
-                "title": section["title"],
-                "content": section["content"],
-                "page_start": page_counter
-            })
-            
+
+            chapters.append(
+                {
+                    "title": section["title"],
+                    "content": section["content"],
+                    "page_start": page_counter,
+                }
+            )
+
             page_counter += max(1, content_lines // 40)
 
         if not chapters:
@@ -137,8 +147,7 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         documents = loader.load()
 
         chapters = []
-        current_chapter = {"title": "Introduction", "content": "", "page_start": 1}
-        
+
         all_content = ""
         for doc in documents:
             all_content += doc.page_content + "\n"
@@ -146,76 +155,92 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         sections = []
         current_section = ""
         current_title = "Introduction"
-        
+
         lines = all_content.split("\n")
         for i, line in enumerate(lines):
             line_stripped = line.strip()
-            
+
             is_new_section = False
             new_title = None
-            
-            if (line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /")) and 
-                "HTTP/1.1" in line_stripped):
+
+            if (
+                line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /"))
+                and "HTTP/1.1" in line_stripped
+            ):
                 is_new_section = True
-                new_title = f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
-            
-            elif (len(line_stripped) > 0 and 
-                  line_stripped[0].isupper() and 
-                  any(c.isupper() for c in line_stripped[1:]) and
-                  not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock")) and
-                  len(line_stripped.split()) == 1 and
-                  len(line_stripped) > 5):
-                is_new_section = True
-                new_title = line_stripped
-            
-            elif (line_stripped.endswith(" Reference") and 
-                  not line_stripped.startswith("Amazon Bedrock API Reference")):
-                is_new_section = True
-                new_title = line_stripped
-            
-            elif (line_stripped.startswith("Data Types") and len(line_stripped.split()) <= 4):
+                new_title = (
+                    f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
+                )
+
+            elif (
+                len(line_stripped) > 0
+                and line_stripped[0].isupper()
+                and any(c.isupper() for c in line_stripped[1:])
+                and not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock"))
+                and len(line_stripped.split()) == 1
+                and len(line_stripped) > 5
+            ):
                 is_new_section = True
                 new_title = line_stripped
-                
-            elif (line_stripped.startswith("Actions") and len(line_stripped.split()) <= 3):
+
+            elif line_stripped.endswith(" Reference") and not line_stripped.startswith(
+                "Amazon Bedrock API Reference"
+            ):
                 is_new_section = True
                 new_title = line_stripped
-                
-            elif (line_stripped.startswith("Errors") and len(line_stripped.split()) <= 3):
+
+            elif (
+                line_stripped.startswith("Data Types")
+                and len(line_stripped.split()) <= 4
+            ):
                 is_new_section = True
                 new_title = line_stripped
-            
+
+            elif (
+                line_stripped.startswith("Actions") and len(line_stripped.split()) <= 3
+            ):
+                is_new_section = True
+                new_title = line_stripped
+
+            elif line_stripped.startswith("Errors") and len(line_stripped.split()) <= 3:
+                is_new_section = True
+                new_title = line_stripped
+
             if is_new_section and current_section.strip():
-                sections.append({
-                    "title": current_title,
-                    "content": current_section.strip()
-                })
+                sections.append(
+                    {"title": current_title, "content": current_section.strip()}
+                )
                 current_section = ""
                 current_title = new_title or line_stripped
-            
+
             current_section += line + "\n"
-        
+
         if current_section.strip():
-            sections.append({
-                "title": current_title,
-                "content": current_section.strip()
-            })
-        
+            sections.append(
+                {"title": current_title, "content": current_section.strip()}
+            )
+
         page_counter = 1
         for i, section in enumerate(sections):
             content_lines = len(section["content"].split("\n"))
-            
-            if content_lines < 10 and i < len(sections) - 1:
-                sections[i + 1]["content"] = section["content"] + "\n\n" + sections[i + 1]["content"]
-                sections[i + 1]["title"] = f"{section['title']} - {sections[i + 1]['title']}"
+
+            if content_lines < 40 and i < len(sections) - 1:
+                sections[i + 1]["content"] = (
+                    section["content"] + "\n\n" + sections[i + 1]["content"]
+                )
+                sections[i + 1]["title"] = (
+                    f"{section['title']} - {sections[i + 1]['title']}"
+                )
                 continue
-            
-            chapters.append({
-                "title": section["title"],
-                "content": section["content"],
-                "page_start": page_counter
-            })
-            
+
+            chapters.append(
+                {
+                    "title": section["title"],
+                    "content": section["content"],
+                    "page_start": page_counter,
+                }
+            )
+
             page_counter += max(1, content_lines // 50)
 
         if not chapters:
@@ -233,59 +258,125 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
         sys.exit(1)
 
 
+def remove_repetitive_content(content: str) -> str:
+    """Remove repetitive copyright text and headers."""
+    lines = content.split("\n")
+    seen_lines = set()
+    filtered_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        if (
+            stripped.startswith("Copyright ©")
+            or stripped == "AWS Well-Architected Framework Framework"
+            or stripped.startswith("Amazon's trademarks")
+            or len(stripped) > 50
+            and stripped.count("AWS Well-Architected") > 1
+        ):
+            continue
+
+        if stripped in seen_lines and len(stripped) > 20:
+            continue
+
+        seen_lines.add(stripped)
+        filtered_lines.append(line)
+
+    return "\n".join(filtered_lines)
+
+
+def is_code_line(line: str) -> bool:
+    """Detect if a line is part of a code block."""
+    return (
+        line.startswith(("{", "}", "POST /", "GET /", "PUT /", "DELETE /", "HTTP/"))
+        or "Content-type:" in line
+        or line.startswith(("curl ", "aws ", "python ", "$ "))
+        or line.endswith(("{", "}"))
+        or (line.startswith('"') and line.endswith('"'))
+        or "=" in line
+        and ("&&" in line or "||" in line)
+    )
+
+
+def is_header_line(line: str, index: int, all_lines: list) -> bool:
+    """Improved header detection."""
+    if len(line) < 3 or len(line) > 60:
+        return False
+
+    next_line = all_lines[index + 1].strip() if index + 1 < len(all_lines) else ""
+
+    return (
+        line[0].isupper()
+        and len(line.split()) <= 6
+        and not line.endswith(".")
+        and not line.startswith(("HTTP", "AWS Well-Architected Framework"))
+        and not next_line.startswith(line[:10])
+    )
+
+
+def is_list_item(line: str) -> bool:
+    """Detect list items."""
+    return line.startswith(("• ", "- ", "* ")) or (
+        len(line) > 2 and line[0].isdigit() and line[1] in (".", ")")
+    )
+
+
+def format_list_item(line: str) -> str:
+    """Format list items consistently."""
+    return f"- {line.lstrip('•-* ').lstrip('0123456789. ')}"
+
+
 def format_content_as_markdown(content: str) -> str:
     """Convert plain text content to markdown with preserved formatting."""
-    lines = content.split('\n')
+    content = remove_repetitive_content(content)
+    lines = content.split("\n")
     formatted_lines = []
     in_code_block = False
-    
-    for i, line in enumerate(lines):
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
-        
+
         if not stripped:
-            formatted_lines.append('')
+            if in_code_block:
+                formatted_lines.append("")
+            else:
+                formatted_lines.append("")
+            i += 1
             continue
-            
-        if (stripped.startswith(('{', 'POST /', 'GET /', 'PUT /', 'DELETE /', 'HTTP/')) or
-            stripped.endswith(('{', '}')) or
-            'Content-type:' in stripped or
-            stripped.startswith(('curl ', 'aws ', 'python '))):
-            if not in_code_block:
-                formatted_lines.append('```')
-                in_code_block = True
-            formatted_lines.append(line)
-            continue
-        elif in_code_block and not stripped.startswith((' ', '\t')):
-            formatted_lines.append('```')
+
+        if is_code_line(stripped) and not in_code_block:
+            in_code_block = True
+            code_block_buffer = ["```"]
+
+            while i < len(lines) and (
+                is_code_line(lines[i].strip())
+                or lines[i].strip() == ""
+                or lines[i].startswith(("  ", "\t"))
+            ):
+                code_block_buffer.append(lines[i])
+                i += 1
+
+            code_block_buffer.append("```")
+            formatted_lines.extend(code_block_buffer)
             in_code_block = False
-        
-        if (len(stripped) > 3 and 
-            (stripped.isupper() or 
-             stripped.endswith((' Reference', ' API', ' Overview')) or
-             (stripped[0].isupper() and len(stripped.split()) <= 4 and 
-              not stripped.endswith('.')))):
-            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
-            if (not stripped.startswith(('HTTP', 'AWS', 'AMAZON')) and
-                len(stripped) < 60 and
-                not next_line.startswith(stripped[:10])):
-                formatted_lines.append(f"## {stripped}")
-                continue
-        
-        if (stripped.startswith(('• ', '- ', '* ')) or
-            (len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in ('.', ')'))):
-            formatted_lines.append(f"- {stripped.lstrip('•-* ').lstrip('0123456789. ')}")
             continue
-            
-        if line.startswith(('  • ', '  - ', '    • ', '    - ')):
-            formatted_lines.append(f"  - {stripped.lstrip('•-* ')}")
+
+        if is_header_line(stripped, i, lines):
+            formatted_lines.append(f"## {stripped}")
+            i += 1
             continue
-        
+
+        if is_list_item(stripped):
+            formatted_lines.append(format_list_item(stripped))
+            i += 1
+            continue
+
         formatted_lines.append(stripped)
-    
-    if in_code_block:
-        formatted_lines.append('```')
-    
-    return '\n'.join(formatted_lines)
+        i += 1
+
+    return "\n".join(formatted_lines)
 
 
 def save_chapters_to_files(chapters: List[Dict[str, Any]], output_dir: Path) -> None:
