@@ -40,43 +40,80 @@ def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
         documents = loader.load()
 
         chapters = []
-        current_chapter = {"title": "Introduction", "content": "", "page_start": 1}
+        
+        all_content = ""
+        for doc in documents:
+            all_content += doc.page_content + "\n"
 
-        for i, doc in enumerate(documents):
-            content = doc.page_content
-
-            lines = content.split("\n")
-            for line in lines:
-                line = line.strip()
-
-                if (
-                    line.startswith(("POST ", "GET ", "PUT ", "DELETE "))
-                    and "/" in line
-                    or line.endswith(" API")
-                    or line.endswith(" Reference")
-                    or (line.startswith("Data Types") and len(line.split()) <= 3)
-                    or (line.startswith("Actions") and len(line.split()) <= 2)
-                    or (line.startswith("Errors") and len(line.split()) <= 2)
-                    or line.startswith("Amazon Bedrock")
-                    or line.startswith("Agents for Amazon Bedrock")
-                ):
-                    if current_chapter["content"].strip():
-                        chapters.append(current_chapter.copy())
-
-                    current_chapter = {
-                        "title": line.replace("#", "").strip(),
-                        "content": "",
-                        "page_start": i + 1,
-                    }
-                    break
-
-            current_chapter["content"] += f"\n{content}\n"
-
-        if current_chapter["content"].strip():
-            chapters.append(current_chapter)
+        sections = []
+        current_section = ""
+        current_title = "Introduction"
+        
+        lines = all_content.split("\n")
+        for i, line in enumerate(lines):
+            line_stripped = line.strip()
+            
+            is_new_section = False
+            new_title = None
+            
+            if (line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /")) and 
+                ("HTTP/1.1" in line_stripped or "/" in line_stripped)):
+                is_new_section = True
+                new_title = f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
+            
+            elif (len(line_stripped) > 0 and 
+                  line_stripped[0].isupper() and 
+                  any(c.isupper() for c in line_stripped[1:]) and
+                  not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock")) and
+                  len(line_stripped.split()) == 1 and
+                  len(line_stripped) > 5 and
+                  not line_stripped.endswith((".", ":", ";"))):
+                is_new_section = True
+                new_title = line_stripped
+            
+            elif (line_stripped.endswith((" Reference", " API")) and 
+                  not line_stripped.startswith("Amazon Bedrock API Reference")):
+                is_new_section = True
+                new_title = line_stripped
+            
+            elif line_stripped in ["Data Types", "Actions", "Errors", "Examples"]:
+                is_new_section = True
+                new_title = line_stripped
+            
+            if is_new_section and current_section.strip():
+                sections.append({
+                    "title": current_title,
+                    "content": current_section.strip()
+                })
+                current_section = ""
+                current_title = new_title or line_stripped
+            
+            current_section += line + "\n"
+        
+        if current_section.strip():
+            sections.append({
+                "title": current_title,
+                "content": current_section.strip()
+            })
+        
+        page_counter = 1
+        for i, section in enumerate(sections):
+            content_lines = len(section["content"].split("\n"))
+            
+            if content_lines < 15 and i < len(sections) - 1:
+                sections[i + 1]["content"] = section["content"] + "\n\n" + sections[i + 1]["content"]
+                sections[i + 1]["title"] = f"{section['title']} - {sections[i + 1]['title']}"
+                continue
+            
+            chapters.append({
+                "title": section["title"],
+                "content": section["content"],
+                "page_start": page_counter
+            })
+            
+            page_counter += max(1, content_lines // 40)
 
         if not chapters:
-            all_content = "\n".join([doc.page_content for doc in documents])
             chapters = [
                 {"title": "Complete Document", "content": all_content, "page_start": 1}
             ]
@@ -101,47 +138,87 @@ def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
 
         chapters = []
         current_chapter = {"title": "Introduction", "content": "", "page_start": 1}
+        
+        all_content = ""
+        for doc in documents:
+            all_content += doc.page_content + "\n"
 
-        for i, doc in enumerate(documents):
-            content = doc.page_content
-            page_num = i + 1
-
-            lines = content.split("\n")
-
-            for line in lines:
-                line = line.strip()
-                if (
-                    line.startswith(("POST ", "GET ", "PUT ", "DELETE "))
-                    and "/" in line
-                    or line.endswith(" API")
-                    or line.endswith(" Reference")
-                    or (line.startswith("Data Types") and len(line.split()) <= 3)
-                    or (line.startswith("Actions") and len(line.split()) <= 2)
-                    or (line.startswith("Errors") and len(line.split()) <= 2)
-                    or line.startswith("Amazon Bedrock")
-                    or line.startswith("Agents for Amazon Bedrock")
-                    or line.startswith("Chapter ")
-                    or line.startswith("CHAPTER ")
-                    or line.startswith("# ")
-                ):
-                    if current_chapter["content"].strip():
-                        chapters.append(current_chapter.copy())
-
-                    current_chapter = {
-                        "title": line.replace("#", "").strip(),
-                        "content": "",
-                        "page_start": page_num,
-                    }
-
-                    break
-
-            current_chapter["content"] += f"\n--- Page {page_num} ---\n{content}\n"
-
-        if current_chapter["content"].strip():
-            chapters.append(current_chapter)
+        sections = []
+        current_section = ""
+        current_title = "Introduction"
+        
+        lines = all_content.split("\n")
+        for i, line in enumerate(lines):
+            line_stripped = line.strip()
+            
+            is_new_section = False
+            new_title = None
+            
+            if (line_stripped.startswith(("POST /", "GET /", "PUT /", "DELETE /")) and 
+                "HTTP/1.1" in line_stripped):
+                is_new_section = True
+                new_title = f"API_{line_stripped.split()[1].replace('/', '_').strip('_')}"
+            
+            elif (len(line_stripped) > 0 and 
+                  line_stripped[0].isupper() and 
+                  any(c.isupper() for c in line_stripped[1:]) and
+                  not line_stripped.startswith(("HTTP", "Content-", "Amazon Bedrock")) and
+                  len(line_stripped.split()) == 1 and
+                  len(line_stripped) > 5):
+                is_new_section = True
+                new_title = line_stripped
+            
+            elif (line_stripped.endswith(" Reference") and 
+                  not line_stripped.startswith("Amazon Bedrock API Reference")):
+                is_new_section = True
+                new_title = line_stripped
+            
+            elif (line_stripped.startswith("Data Types") and len(line_stripped.split()) <= 4):
+                is_new_section = True
+                new_title = line_stripped
+                
+            elif (line_stripped.startswith("Actions") and len(line_stripped.split()) <= 3):
+                is_new_section = True
+                new_title = line_stripped
+                
+            elif (line_stripped.startswith("Errors") and len(line_stripped.split()) <= 3):
+                is_new_section = True
+                new_title = line_stripped
+            
+            if is_new_section and current_section.strip():
+                sections.append({
+                    "title": current_title,
+                    "content": current_section.strip()
+                })
+                current_section = ""
+                current_title = new_title or line_stripped
+            
+            current_section += line + "\n"
+        
+        if current_section.strip():
+            sections.append({
+                "title": current_title,
+                "content": current_section.strip()
+            })
+        
+        page_counter = 1
+        for i, section in enumerate(sections):
+            content_lines = len(section["content"].split("\n"))
+            
+            if content_lines < 10 and i < len(sections) - 1:
+                sections[i + 1]["content"] = section["content"] + "\n\n" + sections[i + 1]["content"]
+                sections[i + 1]["title"] = f"{section['title']} - {sections[i + 1]['title']}"
+                continue
+            
+            chapters.append({
+                "title": section["title"],
+                "content": section["content"],
+                "page_start": page_counter
+            })
+            
+            page_counter += max(1, content_lines // 50)
 
         if not chapters:
-            all_content = "\n".join([doc.page_content for doc in documents])
             chapters = [
                 {"title": "Complete Document", "content": all_content, "page_start": 1}
             ]
