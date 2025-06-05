@@ -34,7 +34,7 @@ def download_pdf(url: str, output_path: Path) -> None:
 def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
     """Parse PDF using UnstructuredLoader for better layout analysis."""
     try:
-        from langchain_unstructured import UnstructuredLoader
+        from langchain_unstructured import UnstructuredLoader  # type: ignore
 
         loader = UnstructuredLoader(str(pdf_path), strategy="hi_res")
         documents = loader.load()
@@ -94,7 +94,7 @@ def parse_pdf_with_unstructured(pdf_path: Path) -> List[Dict[str, Any]]:
 def parse_pdf_with_langchain(pdf_path: Path) -> List[Dict[str, Any]]:
     """Parse PDF using LangChain to extract structured content."""
     try:
-        from langchain_community.document_loaders import PyPDFLoader
+        from langchain_community.document_loaders import PyPDFLoader  # type: ignore
 
         loader = PyPDFLoader(str(pdf_path))
         documents = loader.load()
