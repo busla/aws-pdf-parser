@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aws-pdf-parser"
+version = "0.1.0"
+description = "A Python PDF parser for AWS documentation that converts PDFs to LLM-readable text files"
+authors = [
+    {name = "Devin AI", email = "devin-ai-integration@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain>=0.3.25",
+    "langchain-community>=0.3.24",
+    "pypdf>=5.6.0",
+    "requests>=2.32.3",
+]
+
+[project.scripts]
+parse-pdf = "aws_pdf_parser.main:main"
+
+[tool.uv]
+dev-dependencies = [
+    "black>=25.1.0",
+    "flake8>=7.2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aws_pdf_parser"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/pyproject.toml",
+]
